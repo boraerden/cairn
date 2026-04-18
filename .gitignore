@@ -1,0 +1,48 @@
+# deps
+node_modules/
+.pnpm-store/
+
+# build output
+dist/
+build/
+out/
+*.tsbuildinfo
+.turbo/
+
+# CDK
+infra/cdk.out/
+infra/cdk.context.json
+
+# Lambda bundles
+backend/dist/
+backend/*.zip
+
+# Vite / PWA
+frontend/dist/
+frontend/dev-dist/
+frontend/.vite/
+frontend/stats.html
+
+# env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+.aws/
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# coverage
+coverage/
+.nyc_output/

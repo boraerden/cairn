@@ -1,0 +1,32 @@
+function required(name: string): string {
+  const v = process.env[name];
+  if (!v) throw new Error(`Missing required env var: ${name}`);
+  return v;
+}
+
+export const env = {
+  get BUCKET() {
+    return required("CAIRN_BUCKET");
+  },
+  get REGION() {
+    return process.env.AWS_REGION ?? "us-east-1";
+  },
+  get JWT_SECRET() {
+    return required("JWT_SECRET");
+  },
+  get JWT_TTL_SECONDS() {
+    return Number(process.env.JWT_TTL_SECONDS ?? 60 * 60 * 12);
+  },
+  get PRESIGN_PUT_TTL_SECONDS() {
+    return Number(process.env.PRESIGN_PUT_TTL_SECONDS ?? 300);
+  },
+  get PRESIGN_GET_TTL_SECONDS() {
+    return Number(process.env.PRESIGN_GET_TTL_SECONDS ?? 3600);
+  },
+};
+
+export const S3_KEYS = {
+  mapDoc: "data/map.geojson",
+  users: "auth/users.json",
+  mediaPrefix: "media/",
+} as const;

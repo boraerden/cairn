@@ -1,0 +1,13 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "types": ["node", "aws-lambda"],
+    "outDir": "./dist",
+    "rootDir": "."
+  },
+  "include": ["src/**/*", "scripts/**/*"]
+}
