@@ -26,11 +26,10 @@ export function MapPage(): JSX.Element {
   const handleDrawChange = useCallback(
     (features: GeoJSON.Feature[]) => {
       const existingById = new Map(collection.features.map((f) => [f.properties.id, f]));
-      const touched = new Set<string>();
+      let createdFeatureId: string | null = null;
       for (const raw of features) {
         const id = String(raw.id ?? "");
         if (!id) continue;
-        touched.add(id);
         const existing = existingById.get(id);
         const now = new Date().toISOString();
         const properties: CairnFeatureProperties = existing
@@ -44,6 +43,7 @@ export function MapPage(): JSX.Element {
               updatedAt: now,
               createdBy: user?.email ?? "unknown",
             };
+        if (!existing) createdFeatureId = id;
         const next: CairnFeature = {
           type: "Feature",
           id,
@@ -53,6 +53,10 @@ export function MapPage(): JSX.Element {
         if (JSON.stringify(existing) !== JSON.stringify(next)) {
           upsertFeature(next);
         }
+      }
+      if (createdFeatureId) {
+        setSelectedId(createdFeatureId);
+        setSheetOpen(true);
       }
     },
     [collection, upsertFeature, user],
