@@ -32,6 +32,10 @@ const server = createServer(async (req, res) => {
       routeKey: "$default",
       rawPath: url.pathname,
       rawQueryString: url.search.length > 0 ? url.search.slice(1) : "",
+      queryStringParameters:
+        url.search.length > 0
+          ? Object.fromEntries(Array.from(url.searchParams.entries()))
+          : undefined,
       headers,
       requestContext: {
         accountId: "",
@@ -65,8 +69,12 @@ const server = createServer(async (req, res) => {
     if ("cookies" in result && result.cookies && result.cookies.length > 0) {
       outHeaders["set-cookie"] = result.cookies.join(", ");
     }
-    if ((req.method ?? "GET") === "PUT" && /^\/projects\/[^/]+\/map$/.test(url.pathname) && statusCode === 200) {
-      emitProjectChanged(decodeURIComponent(url.pathname.split("/")[2] ?? ""));
+    if (
+      statusCode === 200 &&
+      (((req.method ?? "GET") === "PUT" && /^\/projects\/[^/]+\/map$/.test(url.pathname)) ||
+        ((req.method ?? "GET") === "POST" && /^\/projects\/[^/]+\/ops$/.test(url.pathname)))
+    ) {
+      emitProjectChanged(decodeURIComponent(url.pathname.split("/")[2] ?? ""), outHeaders.etag);
     }
     res.writeHead(statusCode, outHeaders);
     res.end(result.body ?? "");

@@ -4,6 +4,9 @@ import {
   sanitizeCollection,
   type CairnFeature,
   type CairnFeatureCollection,
+  type ProjectOp,
+  type ProjectOpsResponse,
+  type ProjectSnapshot,
 } from "@cairn/types";
 import { apiFetch, ApiError } from "../api";
 import { API_URL } from "../config";
@@ -39,6 +42,7 @@ export function useMapDoc(projectId: string): UseMapDoc {
   const projectIdRef = useRef(projectId);
   const channelRef = useRef<BroadcastChannel | null>(null);
   const tabIdRef = useRef(Math.random().toString(36).slice(2));
+  const syncedCollectionRef = useRef<CairnFeatureCollection>(emptyCollection());
 
   const load = useCallback(async () => {
     setStatus("loading");
@@ -46,21 +50,28 @@ export function useMapDoc(projectId: string): UseMapDoc {
     if (local) {
       setCollection(local.collection);
       setEtag(local.etag || null);
+      syncedCollectionRef.current = local.baseCollection ?? local.collection;
     }
     try {
-      const res = await apiFetch("GET", `/projects/${encodeURIComponent(projectId)}/map`);
+      const res = await apiFetch("GET", `/projects/${encodeURIComponent(projectId)}/snapshot`);
       if (res.status === 200) {
-        const remote = res.body as CairnFeatureCollection;
-        setCollection(remote);
-        setEtag(res.etag);
-        await saveMapDoc(projectId, {
-          projectId,
-          etag: res.etag ?? "",
-          collection: remote,
-          savedAt: Date.now(),
-          dirty: false,
-        });
-        setStatus("ready");
+        const remote = res.body as ProjectSnapshot;
+        setEtag(remote.lastCursor);
+        if (local?.dirty) {
+          setStatus("ready");
+        } else {
+          setCollection(remote.collection);
+          syncedCollectionRef.current = remote.collection;
+          await saveMapDoc(projectId, {
+            projectId,
+            etag: remote.lastCursor ?? "",
+            collection: remote.collection,
+            baseCollection: remote.collection,
+            savedAt: Date.now(),
+            dirty: false,
+          });
+          setStatus("ready");
+        }
       } else if (res.status === 401) {
         setStatus("error");
         setError("unauthorized");
@@ -100,6 +111,7 @@ export function useMapDoc(projectId: string): UseMapDoc {
         projectId: projectIdRef.current,
         etag: etagRef.current ?? "",
         collection: body,
+        baseCollection: syncedCollectionRef.current,
         savedAt: Date.now(),
         dirty: true,
       });
@@ -107,16 +119,33 @@ export function useMapDoc(projectId: string): UseMapDoc {
         setStatus("offline");
         return;
       }
-      const res = await apiFetch("PUT", `/projects/${encodeURIComponent(projectIdRef.current)}/map`, {
-        body,
-        ifMatch: etagRef.current,
-      });
-      if (res.status === 200) {
-        setEtag(res.etag);
+      const ops = createOps(projectIdRef.current, syncedCollectionRef.current, body);
+      if (ops.length === 0) {
+        dirtyRef.current = false;
         await saveMapDoc(projectIdRef.current, {
           projectId: projectIdRef.current,
-          etag: res.etag ?? "",
+          etag: etagRef.current ?? "",
           collection: body,
+          baseCollection: syncedCollectionRef.current,
+          savedAt: Date.now(),
+          dirty: false,
+        });
+        setStatus("ready");
+        return;
+      }
+      const res = await apiFetch("POST", `/projects/${encodeURIComponent(projectIdRef.current)}/ops`, {
+        body: { ops },
+      });
+      if (res.status === 200) {
+        const payload = res.body as ProjectOpsResponse;
+        setCollection(payload.snapshot.collection);
+        syncedCollectionRef.current = payload.snapshot.collection;
+        setEtag(payload.snapshot.lastCursor);
+        await saveMapDoc(projectIdRef.current, {
+          projectId: projectIdRef.current,
+          etag: payload.snapshot.lastCursor ?? "",
+          collection: payload.snapshot.collection,
+          baseCollection: payload.snapshot.collection,
           savedAt: Date.now(),
           dirty: false,
         });
@@ -126,12 +155,14 @@ export function useMapDoc(projectId: string): UseMapDoc {
           projectId: projectIdRef.current,
           source: tabIdRef.current,
           updatedAt: new Date().toISOString(),
+          cursor: payload.snapshot.lastCursor,
         });
       } else if (res.status === 409) {
-        const current = (res.body as { current?: CairnFeatureCollection } | null)?.current;
+        const current = (res.body as { current?: ProjectSnapshot } | null)?.current;
         if (current) {
-          setCollection(current);
-          setEtag(res.etag);
+          syncedCollectionRef.current = current.collection;
+          setCollection(current.collection);
+          setEtag(current.lastCursor);
           setStatus("conflict");
         } else {
           setStatus("conflict");
@@ -165,10 +196,14 @@ export function useMapDoc(projectId: string): UseMapDoc {
     (feature: CairnFeature) => {
       setCollection((prev) => {
         const idx = prev.features.findIndex((f) => f.properties.id === feature.properties.id);
+        const nextFeature = sanitizeCollection({
+          type: "FeatureCollection",
+          features: [feature],
+        }).features[0] as CairnFeature;
         const next: CairnFeatureCollection =
           idx === -1
-            ? { ...prev, features: [...prev.features, feature] }
-            : { ...prev, features: prev.features.map((f, i) => (i === idx ? feature : f)) };
+            ? { ...prev, features: [...prev.features, nextFeature] }
+            : { ...prev, features: prev.features.map((f, i) => (i === idx ? nextFeature : f)) };
         return next;
       });
       scheduleSave();
@@ -258,5 +293,57 @@ export function useMapDoc(projectId: string): UseMapDoc {
     replaceAll,
     flush,
     reload: load,
+  };
+}
+
+function createOps(projectId: string, base: CairnFeatureCollection, current: CairnFeatureCollection): ProjectOp[] {
+  const baseById = new Map(base.features.map((feature) => [feature.properties.id, feature]));
+  const currentById = new Map(current.features.map((feature) => [feature.properties.id, feature]));
+  const ops: ProjectOp[] = [];
+
+  for (const feature of current.features) {
+    const existing = baseById.get(feature.properties.id);
+    if (!existing) {
+      ops.push({
+        type: "create_feature",
+        opId: crypto.randomUUID(),
+        projectId,
+        feature: withVersion(feature, 0),
+      });
+      continue;
+    }
+    if (JSON.stringify(existing) !== JSON.stringify(feature)) {
+      ops.push({
+        type: "update_feature",
+        opId: crypto.randomUUID(),
+        projectId,
+        feature: withVersion(feature, existing.properties.version),
+        baseVersion: existing.properties.version,
+      });
+    }
+  }
+
+  for (const feature of base.features) {
+    if (!currentById.has(feature.properties.id)) {
+      ops.push({
+        type: "delete_feature",
+        opId: crypto.randomUUID(),
+        projectId,
+        featureId: feature.properties.id,
+        baseVersion: feature.properties.version,
+      });
+    }
+  }
+
+  return ops;
+}
+
+function withVersion(feature: CairnFeature, version: number): CairnFeature {
+  return {
+    ...feature,
+    properties: {
+      ...feature.properties,
+      version,
+    },
   };
 }

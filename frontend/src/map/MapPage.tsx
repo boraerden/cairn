@@ -96,6 +96,7 @@ export function MapPage(): JSX.Element {
               createdAt: now,
               updatedAt: now,
               createdBy: user?.email ?? "unknown",
+              version: 0,
             };
         if (!existing) createdFeatureId = id;
         const next: CairnFeature = {
@@ -169,6 +170,7 @@ export function MapPage(): JSX.Element {
           createdAt: now,
           updatedAt: now,
           createdBy: user?.email ?? "unknown",
+          version: 0,
         },
       };
       upsertFeature(feature);

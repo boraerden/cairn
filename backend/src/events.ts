@@ -14,11 +14,12 @@ export function subscribeProject(projectId: string, listener: ProjectListener): 
   };
 }
 
-export function emitProjectChanged(projectId: string): void {
+export function emitProjectChanged(projectId: string, cursor?: string): void {
   const event: ProjectEvent = {
     type: "project-changed",
     projectId,
     updatedAt: new Date().toISOString(),
+    cursor,
   };
   for (const listener of listeners.get(projectId) ?? []) listener(event);
 }

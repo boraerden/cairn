@@ -38,6 +38,27 @@ export const S3_KEYS = {
   projectMeta(projectId: string) {
     return `projects/${projectId}/meta.json`;
   },
+  projectSnapshot(projectId: string) {
+    return `projects/${projectId}/snapshot.json`;
+  },
+  projectOpsPrefix(projectId: string) {
+    return `projects/${projectId}/ops/`;
+  },
+  projectOp(projectId: string, cursor: string) {
+    return `${this.projectOpsPrefix(projectId)}${cursor}.json`;
+  },
+  projectFeaturesPrefix(projectId: string) {
+    return `projects/${projectId}/features/`;
+  },
+  projectFeature(projectId: string, featureId: string) {
+    return `${this.projectFeaturesPrefix(projectId)}${featureId}.json`;
+  },
+  projectTombstonesPrefix(projectId: string) {
+    return `projects/${projectId}/tombstones/`;
+  },
+  projectTombstone(projectId: string, featureId: string) {
+    return `${this.projectTombstonesPrefix(projectId)}${featureId}.json`;
+  },
   projectMediaPrefix(projectId: string) {
     return `projects/${projectId}/media/`;
   },

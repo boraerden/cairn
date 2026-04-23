@@ -28,6 +28,7 @@ export interface CairnFeatureProperties {
   createdAt: string;
   updatedAt: string;
   createdBy: string;
+  version: number;
 }
 
 export type CairnFeature = Feature<Geometry, CairnFeatureProperties>;
@@ -94,6 +95,78 @@ export interface ProjectEvent {
   type: "project-changed";
   projectId: string;
   updatedAt: string;
+  cursor?: string;
+}
+
+export interface FeatureRecord {
+  id: string;
+  projectId: string;
+  feature: CairnFeature;
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string;
+  updatedBy: string;
+  version: number;
+  lastOpId: string;
+}
+
+export interface TombstoneRecord {
+  projectId: string;
+  featureId: string;
+  deletedAt: string;
+  deletedBy: string;
+  deleteOpId: string;
+  cursor: string;
+}
+
+export interface ProjectSnapshot {
+  projectId: string;
+  generatedAt: string;
+  lastCursor: string | null;
+  features: FeatureRecord[];
+  tombstones: TombstoneRecord[];
+  collection: CairnFeatureCollection;
+}
+
+export interface CreateFeatureOp {
+  type: "create_feature";
+  opId: string;
+  projectId: string;
+  feature: CairnFeature;
+}
+
+export interface UpdateFeatureOp {
+  type: "update_feature";
+  opId: string;
+  projectId: string;
+  feature: CairnFeature;
+  baseVersion: number;
+}
+
+export interface DeleteFeatureOp {
+  type: "delete_feature";
+  opId: string;
+  projectId: string;
+  featureId: string;
+  baseVersion: number;
+}
+
+export type ProjectOp = CreateFeatureOp | UpdateFeatureOp | DeleteFeatureOp;
+
+export interface StoredProjectOp {
+  cursor: string;
+  actor: string;
+  appliedAt: string;
+  op: ProjectOp;
+}
+
+export interface ProjectOpsRequest {
+  ops: ProjectOp[];
+}
+
+export interface ProjectOpsResponse {
+  applied: StoredProjectOp[];
+  snapshot: ProjectSnapshot;
 }
 
 export const MEDIA_SIZE_LIMITS: Record<AttachmentKind, number> = {

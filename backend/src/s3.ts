@@ -1,4 +1,11 @@
-import { S3Client, GetObjectCommand, PutObjectCommand, type PutObjectCommandInput } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  DeleteObjectCommand,
+  GetObjectCommand,
+  ListObjectsV2Command,
+  PutObjectCommand,
+  type PutObjectCommandInput,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Storage } from "@google-cloud/storage";
 import { env } from "./env.js";
@@ -55,6 +62,46 @@ export async function putObjectText(
   // S3 PutObject supports IfMatch only on newer APIs; we implement optimistic locking at the handler layer by re-reading before write.
   const res = await s3.send(new PutObjectCommand(input));
   return { etag: stripEtag(res.ETag ?? "") };
+}
+
+export async function listObjectKeys(prefix: string): Promise<string[]> {
+  if (env.STORAGE_BACKEND === "gcs") {
+    const [files] = await gcs.bucket(env.BUCKET).getFiles({ prefix });
+    return files.map((file) => file.name).sort((a, b) => a.localeCompare(b));
+  }
+
+  const keys: string[] = [];
+  let continuationToken: string | undefined;
+  do {
+    const res = await s3.send(
+      new ListObjectsV2Command({
+        Bucket: env.BUCKET,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+      }),
+    );
+    for (const item of res.Contents ?? []) {
+      if (item.Key) keys.push(item.Key);
+    }
+    continuationToken = res.NextContinuationToken;
+  } while (continuationToken);
+
+  return keys.sort((a, b) => a.localeCompare(b));
+}
+
+export async function deleteObject(key: string): Promise<void> {
+  if (env.STORAGE_BACKEND === "gcs") {
+    const file = gcs.bucket(env.BUCKET).file(key);
+    try {
+      await file.delete();
+    } catch (err: unknown) {
+      if ((err as { code?: number }).code === 404) return;
+      throw err;
+    }
+    return;
+  }
+
+  await s3.send(new DeleteObjectCommand({ Bucket: env.BUCKET, Key: key }));
 }
 
 export async function presignPut(key: string, contentType: string, ttlSeconds: number): Promise<string> {

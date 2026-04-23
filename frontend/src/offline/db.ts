@@ -24,6 +24,7 @@ export interface StoredMapDoc {
   projectId: string;
   etag: string;
   collection: CairnFeatureCollection;
+  baseCollection?: CairnFeatureCollection;
   savedAt: number;
   dirty: boolean;
 }

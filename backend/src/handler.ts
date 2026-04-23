@@ -6,6 +6,7 @@ import type {
 import type {
   CairnFeatureCollection,
   CreateProjectRequest,
+  ProjectOpsRequest,
   ProjectMemberRequest,
   ProjectSummary,
   UserRecord,
@@ -23,8 +24,8 @@ import {
   verifyPassword,
   verifyToken,
 } from "./auth.js";
-import { readMapDoc, writeMapDoc } from "./map-doc.js";
 import { presignRead, presignUpload, type PresignRequest } from "./media.js";
+import { applyProjectOps, collectionToOps, readProjectOps, readProjectSnapshot } from "./project-state.js";
 import {
   addProjectMember,
   createProject,
@@ -33,7 +34,6 @@ import {
   removeProjectMember,
   requireProjectAccess,
   summarizeProject,
-  touchProject,
 } from "./projects.js";
 
 const CORS: Record<string, string> = {
@@ -121,6 +121,15 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         if (method === "PUT" && segments.length === 3 && segments[2] === "map") {
           return await handlePutMap(event, projectId);
         }
+        if (method === "GET" && segments.length === 3 && segments[2] === "snapshot") {
+          return await handleGetSnapshot(event, projectId);
+        }
+        if (method === "GET" && segments.length === 3 && segments[2] === "ops") {
+          return await handleGetOps(event, projectId);
+        }
+        if (method === "POST" && segments.length === 3 && segments[2] === "ops") {
+          return await handlePostOps(event, projectId);
+        }
         if (method === "POST" && segments.length === 4 && segments[2] === "media" && segments[3] === "presign") {
           return await handlePresign(event, projectId);
         }
@@ -203,9 +212,9 @@ async function handleProjectOpen(event: APIGatewayProxyEventV2, projectId: strin
 async function handleGetMap(event: APIGatewayProxyEventV2, projectId: string): Promise<Result> {
   const project = await requireProject(event, projectId);
   if (isResult(project)) return project;
-  const { collection, etag } = await readMapDoc(projectId);
-  const headers: Record<string, string> = etag ? { etag } : {};
-  return json(200, collection, headers);
+  const snapshot = await readProjectSnapshot(projectId);
+  const headers: Record<string, string> = snapshot.lastCursor ? { etag: snapshot.lastCursor } : {};
+  return json(200, snapshot.collection, headers);
 }
 
 async function handlePutMap(event: APIGatewayProxyEventV2, projectId: string): Promise<Result> {
@@ -216,12 +225,51 @@ async function handlePutMap(event: APIGatewayProxyEventV2, projectId: string): P
   if (body.type !== "FeatureCollection" || !Array.isArray(body.features)) {
     return json(400, { error: "body must be a FeatureCollection" });
   }
-  const result = await writeMapDoc(projectId, body, ifMatch ? ifMatch.replace(/"/g, "") : null);
-  if (result.conflict) {
-    return json(409, { error: "conflict", current: result.current?.collection }, { etag: result.current?.etag ?? "" });
+  const current = await readProjectSnapshot(projectId);
+  const cleanedIfMatch = ifMatch ? ifMatch.replace(/"/g, "") : null;
+  if (cleanedIfMatch !== null && current.lastCursor && cleanedIfMatch !== current.lastCursor) {
+    return json(409, { error: "conflict", current: current.collection }, { etag: current.lastCursor });
   }
-  await touchProject(projectId);
-  return json(200, { ok: true }, { etag: result.etag });
+  const ops = collectionToOps(projectId, project.email, current, body);
+  const result = await applyProjectOps(projectId, project.email, ops);
+  if (!result.ok || !result.response) {
+    return json(409, { error: result.reason ?? "conflict", current: result.snapshot?.collection }, {
+      etag: result.snapshot?.lastCursor ?? "",
+    });
+  }
+  return json(200, { ok: true }, { etag: result.response.snapshot.lastCursor ?? "" });
+}
+
+async function handleGetSnapshot(event: APIGatewayProxyEventV2, projectId: string): Promise<Result> {
+  const project = await requireProject(event, projectId);
+  if (isResult(project)) return project;
+  const snapshot = await readProjectSnapshot(projectId);
+  return json(200, snapshot, snapshot.lastCursor ? { etag: snapshot.lastCursor } : {});
+}
+
+async function handleGetOps(event: APIGatewayProxyEventV2, projectId: string): Promise<Result> {
+  const project = await requireProject(event, projectId);
+  if (isResult(project)) return project;
+  const since = event.queryStringParameters?.since ?? null;
+  const ops = await readProjectOps(projectId, since);
+  return json(200, { ops });
+}
+
+async function handlePostOps(event: APIGatewayProxyEventV2, projectId: string): Promise<Result> {
+  const project = await requireProject(event, projectId);
+  if (isResult(project)) return project;
+  const body = parseBody<ProjectOpsRequest>(event);
+  if (!Array.isArray(body.ops)) return json(400, { error: "ops array required" });
+  const ops = body.ops.map((op) => ({ ...op, projectId }));
+  const result = await applyProjectOps(projectId, project.email, ops);
+  if (!result.ok || !result.response) {
+    return json(
+      409,
+      { error: result.reason ?? "conflict", current: result.snapshot },
+      result.snapshot?.lastCursor ? { etag: result.snapshot.lastCursor } : {},
+    );
+  }
+  return json(200, result.response, result.response.snapshot.lastCursor ? { etag: result.response.snapshot.lastCursor } : {});
 }
 
 async function handlePresign(event: APIGatewayProxyEventV2, projectId: string): Promise<Result> {
@@ -330,6 +378,10 @@ function knownError(err: unknown): Result {
     message === "member email required" ||
     message === "cannot remove project creator" ||
     message === "project must have at least one member" ||
+    message === "feature deleted" ||
+    message === "feature already exists" ||
+    message === "feature not found" ||
+    message === "ops array required" ||
     message.includes("uuid") ||
     message.includes("invalid kind") ||
     message.includes("not allowed") ||
