@@ -1,0 +1,21 @@
+FROM node:20-slim AS build
+WORKDIR /app
+
+RUN corepack enable
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY packages ./packages
+COPY backend ./backend
+
+RUN pnpm install --frozen-lockfile --filter @cairn/backend...
+RUN pnpm --filter @cairn/backend build:cloudrun
+
+FROM gcr.io/distroless/nodejs20-debian12
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=8080
+
+COPY --from=build /app/backend/dist/server.mjs ./server.mjs
+
+CMD ["server.mjs"]

@@ -2,7 +2,7 @@
   "name": "cairn",
   "version": "0.1.0",
   "private": true,
-  "description": "Cairn: collaborative field-reporting PWA (MapLibre + AWS Lambda + S3)",
+  "description": "Cairn: collaborative field-reporting PWA (MapLibre + AWS/GCP backends)",
   "packageManager": "pnpm@10.33.0",
   "engines": {
     "node": ">=20.0.0"
@@ -13,6 +13,7 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "backend:build": "pnpm --filter @cairn/backend build",
+    "backend:build:gcp": "pnpm --filter @cairn/backend build:cloudrun",
     "frontend:build": "pnpm --filter @cairn/frontend build",
     "infra:synth": "pnpm --filter @cairn/infra synth",
     "infra:deploy": "pnpm frontend:build && pnpm --filter @cairn/infra deploy",

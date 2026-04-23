@@ -1,0 +1,19 @@
+FROM node:20-slim AS build
+WORKDIR /app
+
+RUN corepack enable
+
+ARG VITE_API_URL
+ENV VITE_API_URL=${VITE_API_URL}
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY packages ./packages
+COPY frontend ./frontend
+
+RUN pnpm install --frozen-lockfile --filter @cairn/frontend...
+RUN pnpm --filter @cairn/frontend build
+
+FROM nginx:1.27-alpine
+
+COPY nginx.frontend-gcp.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/frontend/dist /usr/share/nginx/html

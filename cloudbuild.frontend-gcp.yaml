@@ -1,0 +1,14 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - Dockerfile.frontend-gcp
+      - --build-arg
+      - VITE_API_URL=${_VITE_API_URL}
+      - -t
+      - gcr.io/$PROJECT_ID/cairn-web
+      - .
+
+images:
+  - gcr.io/$PROJECT_ID/cairn-web

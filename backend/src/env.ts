@@ -5,6 +5,10 @@ function required(name: string): string {
 }
 
 export const env = {
+  get STORAGE_BACKEND() {
+    const raw = (process.env.CAIRN_STORAGE_BACKEND ?? "s3").toLowerCase();
+    return raw === "gcs" ? "gcs" : "s3";
+  },
   get BUCKET() {
     return required("CAIRN_BUCKET");
   },

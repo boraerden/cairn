@@ -1,0 +1,12 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - Dockerfile.backend-gcp
+      - -t
+      - gcr.io/$PROJECT_ID/cairn-api
+      - .
+
+images:
+  - gcr.io/$PROJECT_ID/cairn-api
