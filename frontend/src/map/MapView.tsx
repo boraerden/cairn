@@ -22,8 +22,13 @@ export function MapView({ collection, onFeaturesChanged, onFeatureSelected, mode
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MlMap | null>(null);
   const drawRef = useRef<TerraDraw | null>(null);
+  const collectionRef = useRef(collection);
   const onFeaturesChangedRef = useRef(onFeaturesChanged);
   const onFeatureSelectedRef = useRef(onFeatureSelected);
+
+  useEffect(() => {
+    collectionRef.current = collection;
+  }, [collection]);
 
   useEffect(() => {
     onFeaturesChangedRef.current = onFeaturesChanged;
@@ -75,7 +80,7 @@ export function MapView({ collection, onFeaturesChanged, onFeatureSelected, mode
       draw.on("select", (id) => onFeatureSelectedRef.current(String(id)));
       draw.on("deselect", () => onFeatureSelectedRef.current(null));
 
-      syncIntoDraw(draw, collection);
+      syncIntoDraw(draw, collectionRef.current);
     });
 
     return () => {
@@ -119,19 +124,44 @@ export function MapView({ collection, onFeaturesChanged, onFeatureSelected, mode
 function syncIntoDraw(draw: TerraDraw, fc: CairnFeatureCollection): void {
   const incoming = fc.features
     .filter((f) => f.geometry && "coordinates" in f.geometry)
-    .map((f) => ({ ...f, id: f.properties.id }));
+    .map((f) => ({
+      ...f,
+      id: f.properties.id,
+      properties: {
+        ...f.properties,
+        mode: modeForGeometry(f.geometry.type),
+      },
+    }));
   const existing = draw.getSnapshot();
-  const existingIds = new Set(existing.map((f: GeoJSON.Feature) => String(f.id)));
+  const existingById = new Map(existing.map((f: GeoJSON.Feature) => [String(f.id), f]));
   const incomingIds = new Set(incoming.map((f) => String(f.id)));
-  const toRemove = [...existingIds].filter((id) => !incomingIds.has(id));
+  const toRemove = existing
+    .map((f: GeoJSON.Feature) => String(f.id))
+    .filter((id) => !incomingIds.has(id));
+
+  for (const feature of incoming) {
+    const current = existingById.get(String(feature.id));
+    if (!current) continue;
+    if (JSON.stringify(current.geometry) !== JSON.stringify(feature.geometry)) {
+      toRemove.push(String(feature.id));
+    }
+  }
+
   if (toRemove.length > 0) draw.removeFeatures(toRemove);
-  if (incoming.length > 0) {
+  const toAdd = incoming.filter((feature) => !existingById.has(String(feature.id)) || toRemove.includes(String(feature.id)));
+  if (toAdd.length > 0) {
     try {
-      draw.addFeatures(incoming as unknown as Parameters<TerraDraw["addFeatures"]>[0]);
+      draw.addFeatures(toAdd as unknown as Parameters<TerraDraw["addFeatures"]>[0]);
     } catch {
       // Terra Draw throws if a feature already exists; safe to ignore.
     }
   }
+}
+
+function modeForGeometry(type: GeoJSON.Geometry["type"]): "point" | "linestring" | "polygon" {
+  if (type === "LineString") return "linestring";
+  if (type === "Polygon") return "polygon";
+  return "point";
 }
 
 function locateMe(map: MlMap | null): void {

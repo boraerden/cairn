@@ -28,8 +28,10 @@ const mapBgSync = new BackgroundSyncPlugin("cairn-map-sync", {
 
 registerRoute(
   ({ url, request }) =>
-    (url.pathname === "/map" || url.pathname.startsWith("/admin/users") || url.pathname.startsWith("/media/")) &&
-    (request.method === "GET"),
+    ((url.pathname === "/projects" ||
+      (url.pathname.startsWith("/projects/") && !url.pathname.endsWith("/events"))) ||
+      url.pathname.startsWith("/admin/users")) &&
+    request.method === "GET",
   new NetworkFirst({
     cacheName: "cairn-api",
     networkTimeoutSeconds: 4,
@@ -37,7 +39,7 @@ registerRoute(
 );
 
 registerRoute(
-  ({ url, request }) => url.pathname === "/map" && request.method === "PUT",
+  ({ url, request }) => /^\/projects\/[^/]+\/map$/.test(url.pathname) && request.method === "PUT",
   new NetworkFirst({
     cacheName: "cairn-api-writes",
     plugins: [mapBgSync],

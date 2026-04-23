@@ -3,6 +3,7 @@ import type { Attachment } from "@cairn/types";
 import { useMediaUpload } from "./useMediaUpload";
 
 interface Props {
+  projectId: string;
   featureId: string;
   onAttached: (a: Attachment) => void;
 }
@@ -21,7 +22,7 @@ function pickMime(): { mime: string; ext: string } {
   return { mime: "audio/webm", ext: "webm" };
 }
 
-export function AudioRecorder({ featureId, onAttached }: Props): JSX.Element {
+export function AudioRecorder({ projectId, featureId, onAttached }: Props): JSX.Element {
   const enqueue = useMediaUpload();
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -59,6 +60,7 @@ export function AudioRecorder({ featureId, onAttached }: Props): JSX.Element {
         setRecording(false);
         setSeconds(0);
         const attachment = await enqueue({
+          projectId,
           featureId,
           kind: "audio",
           blob,

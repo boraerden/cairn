@@ -30,7 +30,15 @@ export const env = {
 };
 
 export const S3_KEYS = {
-  mapDoc: "data/map.geojson",
   users: "auth/users.json",
-  mediaPrefix: "media/",
+  projects: "projects/index.json",
+  projectMapDoc(projectId: string) {
+    return `projects/${projectId}/map.geojson`;
+  },
+  projectMeta(projectId: string) {
+    return `projects/${projectId}/meta.json`;
+  },
+  projectMediaPrefix(projectId: string) {
+    return `projects/${projectId}/media/`;
+  },
 } as const;

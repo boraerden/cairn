@@ -68,8 +68,11 @@ async function uploadOne(item: QueuedUpload): Promise<void> {
   await putQueued(item);
   await notify();
 
-  const presign = await api<PresignResponse>("POST", "/media/presign", {
+  const projectMediaPath = `/projects/${encodeURIComponent(item.projectId)}/media/presign`;
+
+  const presign = await api<PresignResponse>("POST", projectMediaPath, {
     body: {
+      projectId: item.projectId,
       featureId: item.featureId,
       mediaId: item.mediaId,
       kind: item.kind,

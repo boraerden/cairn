@@ -3,6 +3,7 @@ import type { CairnFeatureCollection } from "@cairn/types";
 
 export interface QueuedUpload {
   id: string;
+  projectId: string;
   featureId: string;
   mediaId: string;
   kind: "photo" | "audio" | "video";
@@ -20,6 +21,7 @@ export interface QueuedUpload {
 }
 
 export interface StoredMapDoc {
+  projectId: string;
   etag: string;
   collection: CairnFeatureCollection;
   savedAt: number;
@@ -39,7 +41,7 @@ export interface StoredRegion {
 
 interface CairnDB extends DBSchema {
   queue: { key: string; value: QueuedUpload };
-  mapDoc: { key: "current"; value: StoredMapDoc };
+  mapDoc: { key: string; value: StoredMapDoc };
   mediaBlobs: { key: string; value: { key: string; blob: Blob } };
   regions: { key: string; value: StoredRegion };
 }
@@ -48,12 +50,14 @@ let dbp: Promise<IDBPDatabase<CairnDB>> | null = null;
 
 export function db(): Promise<IDBPDatabase<CairnDB>> {
   if (!dbp) {
-    dbp = openDB<CairnDB>("cairn", 1, {
-      upgrade(db) {
-        db.createObjectStore("queue", { keyPath: "id" });
-        db.createObjectStore("mapDoc");
-        db.createObjectStore("mediaBlobs", { keyPath: "key" });
-        db.createObjectStore("regions", { keyPath: "id" });
+    dbp = openDB<CairnDB>("cairn", 2, {
+      upgrade(db, oldVersion) {
+        if (oldVersion < 1) {
+          db.createObjectStore("queue", { keyPath: "id" });
+          db.createObjectStore("mapDoc");
+          db.createObjectStore("mediaBlobs", { keyPath: "key" });
+          db.createObjectStore("regions", { keyPath: "id" });
+        }
       },
     });
   }
@@ -91,14 +95,14 @@ export async function getMediaBlob(key: string): Promise<Blob | undefined> {
   return rec?.blob;
 }
 
-export async function saveMapDoc(doc: StoredMapDoc): Promise<void> {
+export async function saveMapDoc(projectId: string, doc: StoredMapDoc): Promise<void> {
   const d = await db();
-  await d.put("mapDoc", doc, "current");
+  await d.put("mapDoc", doc, projectId);
 }
 
-export async function loadMapDoc(): Promise<StoredMapDoc | undefined> {
+export async function loadMapDoc(projectId: string): Promise<StoredMapDoc | undefined> {
   const d = await db();
-  return d.get("mapDoc", "current");
+  return d.get("mapDoc", projectId);
 }
 
 export async function listRegions(): Promise<StoredRegion[]> {

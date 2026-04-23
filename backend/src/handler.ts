@@ -3,7 +3,14 @@ import type {
   APIGatewayProxyStructuredResultV2,
   APIGatewayProxyHandlerV2,
 } from "aws-lambda";
-import type { CairnFeatureCollection, UserRecord, UserRole } from "@cairn/types";
+import type {
+  CairnFeatureCollection,
+  CreateProjectRequest,
+  ProjectMemberRequest,
+  ProjectSummary,
+  UserRecord,
+  UserRole,
+} from "@cairn/types";
 
 type Result = APIGatewayProxyStructuredResultV2;
 import {
@@ -18,6 +25,16 @@ import {
 } from "./auth.js";
 import { readMapDoc, writeMapDoc } from "./map-doc.js";
 import { presignRead, presignUpload, type PresignRequest } from "./media.js";
+import {
+  addProjectMember,
+  createProject,
+  listProjectsForUser,
+  markProjectOpened,
+  removeProjectMember,
+  requireProjectAccess,
+  summarizeProject,
+  touchProject,
+} from "./projects.js";
 
 const CORS: Record<string, string> = {
   "access-control-allow-origin": "*",
@@ -65,20 +82,59 @@ async function requireAuth(event: APIGatewayProxyEventV2, roles?: UserRole[]): P
   }
 }
 
+async function requireProject(
+  event: APIGatewayProxyEventV2,
+  projectId: string,
+): Promise<AuthPrincipal | Result> {
+  const auth = await requireAuth(event);
+  if (isResult(auth)) return auth;
+  try {
+    await requireProjectAccess(projectId, auth.email);
+    return auth;
+  } catch (err) {
+    return knownError(err);
+  }
+}
+
 export const handler: APIGatewayProxyHandlerV2 = async (event) => {
   const method = event.requestContext.http.method;
   const path = event.rawPath.replace(/\/+$/, "") || "/";
+  const segments = path.split("/").filter(Boolean).map(decodeURIComponent);
 
   if (method === "OPTIONS") return text(204, "", CORS);
 
   try {
     if (method === "POST" && path === "/login") return await handleLogin(event);
 
-    if (method === "GET" && path === "/map") return await handleGetMap(event);
-    if (method === "PUT" && path === "/map") return await handlePutMap(event);
-
-    if (method === "POST" && path === "/media/presign") return await handlePresign(event);
-    if (method === "GET" && path.startsWith("/media/")) return await handleMediaGet(event, path);
+    if (segments[0] === "projects") {
+      if (method === "GET" && segments.length === 1) return await handleProjectList(event);
+      if (method === "POST" && segments.length === 1) return await handleProjectCreate(event);
+      if (segments.length >= 2) {
+        const projectId = segments[1] ?? "";
+        if (method === "GET" && segments.length === 2) return await handleProjectGet(event, projectId);
+        if (method === "POST" && segments.length === 3 && segments[2] === "open") {
+          return await handleProjectOpen(event, projectId);
+        }
+        if (method === "GET" && segments.length === 3 && segments[2] === "map") {
+          return await handleGetMap(event, projectId);
+        }
+        if (method === "PUT" && segments.length === 3 && segments[2] === "map") {
+          return await handlePutMap(event, projectId);
+        }
+        if (method === "POST" && segments.length === 4 && segments[2] === "media" && segments[3] === "presign") {
+          return await handlePresign(event, projectId);
+        }
+        if (method === "GET" && segments.length >= 4 && segments[2] === "media") {
+          return await handleMediaGet(event, projectId, path);
+        }
+        if (method === "POST" && segments.length === 3 && segments[2] === "members") {
+          return await handleProjectMemberAdd(event, projectId);
+        }
+        if (method === "DELETE" && segments.length === 4 && segments[2] === "members") {
+          return await handleProjectMemberDelete(event, projectId, segments[3] ?? "");
+        }
+      }
+    }
 
     if (method === "GET" && path === "/admin/users") return await handleAdminList(event);
     if (method === "POST" && path === "/admin/users") return await handleAdminCreate(event);
@@ -103,50 +159,120 @@ async function handleLogin(event: APIGatewayProxyEventV2): Promise<Result> {
   return json(200, { token, role: user.role, email: user.email });
 }
 
-async function handleGetMap(event: APIGatewayProxyEventV2): Promise<Result> {
+async function handleProjectList(event: APIGatewayProxyEventV2): Promise<Result> {
   const auth = await requireAuth(event);
   if (isResult(auth)) return auth;
-  const { collection, etag } = await readMapDoc();
+  const projects = await listProjectsForUser(auth.email);
+  return json(200, projects);
+}
+
+async function handleProjectCreate(event: APIGatewayProxyEventV2): Promise<Result> {
+  const auth = await requireAuth(event);
+  if (isResult(auth)) return auth;
+  const body = parseBody<CreateProjectRequest>(event);
+  try {
+    const project = await createProject(body.name ?? "", auth.email);
+    return json(201, summarizeProject(project, auth.email));
+  } catch (err) {
+    return knownError(err);
+  }
+}
+
+async function handleProjectGet(event: APIGatewayProxyEventV2, projectId: string): Promise<Result> {
+  const auth = await requireAuth(event);
+  if (isResult(auth)) return auth;
+  try {
+    const project = await requireProjectAccess(projectId, auth.email);
+    return json(200, summarizeProject(project, auth.email));
+  } catch (err) {
+    return knownError(err);
+  }
+}
+
+async function handleProjectOpen(event: APIGatewayProxyEventV2, projectId: string): Promise<Result> {
+  const auth = await requireAuth(event);
+  if (isResult(auth)) return auth;
+  try {
+    const project = await markProjectOpened(projectId, auth.email);
+    return json(200, summarizeProject(project, auth.email));
+  } catch (err) {
+    return knownError(err);
+  }
+}
+
+async function handleGetMap(event: APIGatewayProxyEventV2, projectId: string): Promise<Result> {
+  const project = await requireProject(event, projectId);
+  if (isResult(project)) return project;
+  const { collection, etag } = await readMapDoc(projectId);
   const headers: Record<string, string> = etag ? { etag } : {};
   return json(200, collection, headers);
 }
 
-async function handlePutMap(event: APIGatewayProxyEventV2): Promise<Result> {
-  const auth = await requireAuth(event);
-  if (isResult(auth)) return auth;
+async function handlePutMap(event: APIGatewayProxyEventV2, projectId: string): Promise<Result> {
+  const project = await requireProject(event, projectId);
+  if (isResult(project)) return project;
   const ifMatch = (event.headers?.["if-match"] ?? event.headers?.["If-Match"] ?? null) as string | null;
   const body = parseBody<CairnFeatureCollection>(event);
   if (body.type !== "FeatureCollection" || !Array.isArray(body.features)) {
     return json(400, { error: "body must be a FeatureCollection" });
   }
-  const result = await writeMapDoc(body, ifMatch ? ifMatch.replace(/"/g, "") : null);
+  const result = await writeMapDoc(projectId, body, ifMatch ? ifMatch.replace(/"/g, "") : null);
   if (result.conflict) {
     return json(409, { error: "conflict", current: result.current?.collection }, { etag: result.current?.etag ?? "" });
   }
+  await touchProject(projectId);
   return json(200, { ok: true }, { etag: result.etag });
 }
 
-async function handlePresign(event: APIGatewayProxyEventV2): Promise<Result> {
-  const auth = await requireAuth(event);
-  if (isResult(auth)) return auth;
+async function handlePresign(event: APIGatewayProxyEventV2, projectId: string): Promise<Result> {
+  const project = await requireProject(event, projectId);
+  if (isResult(project)) return project;
   const req = parseBody<PresignRequest>(event);
   try {
-    const res = await presignUpload(req);
+    const res = await presignUpload({ ...req, projectId });
     return json(200, res);
   } catch (err) {
-    return json(400, { error: err instanceof Error ? err.message : String(err) });
+    return knownError(err);
   }
 }
 
-async function handleMediaGet(event: APIGatewayProxyEventV2, path: string): Promise<Result> {
-  const auth = await requireAuth(event);
-  if (isResult(auth)) return auth;
-  const key = decodeURIComponent(path.slice("/media/".length));
+async function handleMediaGet(event: APIGatewayProxyEventV2, projectId: string, path: string): Promise<Result> {
+  const project = await requireProject(event, projectId);
+  if (isResult(project)) return project;
+  const prefix = `/projects/${encodeURIComponent(projectId)}/media/`;
+  const key = decodeURIComponent(path.slice(prefix.length));
   try {
-    const url = await presignRead(key);
+    const url = await presignRead(projectId, key);
     return json(200, { url });
   } catch (err) {
-    return json(400, { error: err instanceof Error ? err.message : String(err) });
+    return knownError(err);
+  }
+}
+
+async function handleProjectMemberAdd(event: APIGatewayProxyEventV2, projectId: string): Promise<Result> {
+  const auth = await requireAuth(event);
+  if (isResult(auth)) return auth;
+  const body = parseBody<ProjectMemberRequest>(event);
+  try {
+    const project = await addProjectMember(projectId, auth.email, body.email ?? "");
+    return json(200, summarizeProject(project, auth.email));
+  } catch (err) {
+    return knownError(err);
+  }
+}
+
+async function handleProjectMemberDelete(
+  event: APIGatewayProxyEventV2,
+  projectId: string,
+  email: string,
+): Promise<Result> {
+  const auth = await requireAuth(event);
+  if (isResult(auth)) return auth;
+  try {
+    const project = await removeProjectMember(projectId, auth.email, email);
+    return json(200, summarizeProject(project, auth.email));
+  } catch (err) {
+    return knownError(err);
   }
 }
 
@@ -193,4 +319,24 @@ async function handleAdminDelete(event: APIGatewayProxyEventV2, path: string): P
   if (next.length === users.length) return json(404, { error: "user not found" });
   await saveUsers(next);
   return json(200, { ok: true });
+}
+
+function knownError(err: unknown): Result {
+  const message = err instanceof Error ? err.message : String(err);
+  if (message === "forbidden") return json(403, { error: message });
+  if (message === "project not found") return json(404, { error: message });
+  if (
+    message === "project name required" ||
+    message === "member email required" ||
+    message === "cannot remove project creator" ||
+    message === "project must have at least one member" ||
+    message.includes("uuid") ||
+    message.includes("invalid kind") ||
+    message.includes("not allowed") ||
+    message.includes("size out of range") ||
+    message.includes("outside project media prefix")
+  ) {
+    return json(400, { error: message });
+  }
+  return json(500, { error: message });
 }

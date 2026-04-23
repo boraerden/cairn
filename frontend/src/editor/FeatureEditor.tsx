@@ -6,12 +6,13 @@ import { VideoCapture } from "../media/VideoCapture";
 import { AudioRecorder } from "../media/AudioRecorder";
 
 interface Props {
+  projectId: string;
   feature: CairnFeature;
   onChange: (feature: CairnFeature) => void;
   onDelete: (id: string) => void;
 }
 
-export function FeatureEditor({ feature, onChange, onDelete }: Props): JSX.Element {
+export function FeatureEditor({ projectId, feature, onChange, onDelete }: Props): JSX.Element {
   const addAttachment = useCallback(
     (attachment: Attachment) => {
       onChange({
@@ -60,16 +61,16 @@ export function FeatureEditor({ feature, onChange, onDelete }: Props): JSX.Eleme
       </div>
 
       <div className="row">
-        <PhotoCapture featureId={feature.properties.id} onAttached={addAttachment} />
-        <VideoCapture featureId={feature.properties.id} onAttached={addAttachment} />
-        <AudioRecorder featureId={feature.properties.id} onAttached={addAttachment} />
+        <PhotoCapture projectId={projectId} featureId={feature.properties.id} onAttached={addAttachment} />
+        <VideoCapture projectId={projectId} featureId={feature.properties.id} onAttached={addAttachment} />
+        <AudioRecorder projectId={projectId} featureId={feature.properties.id} onAttached={addAttachment} />
       </div>
 
       <div className="field-row">
         <label>Attachments ({feature.properties.attachments.length})</label>
         <div className="attachment-list">
           {feature.properties.attachments.map((a) => (
-            <MediaView key={a.id} attachment={a} onRemove={() => removeAttachment(a.id)} />
+            <MediaView key={a.id} projectId={projectId} attachment={a} onRemove={() => removeAttachment(a.id)} />
           ))}
         </div>
       </div>

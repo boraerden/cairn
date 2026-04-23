@@ -5,6 +5,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { enqueueUpload } from "../offline/syncQueue";
 
 interface EnqueueArgs {
+  projectId: string;
   featureId: string;
   kind: AttachmentKind;
   blob: Blob;
@@ -18,7 +19,7 @@ interface EnqueueArgs {
 export function useMediaUpload(): (args: EnqueueArgs) => Promise<Attachment> {
   const { user } = useAuth();
   return useCallback(
-    async ({ featureId, kind, blob, thumbBlob, mimeType, durationMs, width, height }) => {
+    async ({ projectId, featureId, kind, blob, thumbBlob, mimeType, durationMs, width, height }) => {
       const mediaId = uuid();
       const attachment: Attachment = {
         id: mediaId,
@@ -36,6 +37,7 @@ export function useMediaUpload(): (args: EnqueueArgs) => Promise<Attachment> {
       };
       await enqueueUpload({
         id: mediaId,
+        projectId,
         featureId,
         mediaId,
         kind,

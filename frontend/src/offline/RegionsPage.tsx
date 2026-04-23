@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 import { v4 as uuid } from "uuid";
 import { OFFLINE_LIMITS } from "../config";
 import { deleteRegion, listRegions, putRegion, type StoredRegion } from "./db";
 import { downloadRegion, estimateCacheBytes, type TileDownloadProgress } from "./tiles";
 
 export function RegionsPage(): JSX.Element {
+  const { projectId } = useParams<{ projectId: string }>();
   const [regions, setRegions] = useState<StoredRegion[]>([]);
   const [totalBytes, setTotalBytes] = useState(0);
   const [progress, setProgress] = useState<TileDownloadProgress | null>(null);
@@ -74,12 +75,14 @@ export function RegionsPage(): JSX.Element {
     await refresh();
   }
 
+  if (!projectId) return <Navigate to="/projects" replace />;
+
   return (
     <div className="admin-shell">
       <div className="row">
         <h1 style={{ margin: 0 }}>Offline regions</h1>
         <div style={{ flex: 1 }} />
-        <Link to="/map">
+        <Link to={`/projects/${encodeURIComponent(projectId)}/map`}>
           <button type="button">Back to map</button>
         </Link>
       </div>

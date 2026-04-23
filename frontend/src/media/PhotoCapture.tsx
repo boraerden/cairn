@@ -4,11 +4,12 @@ import type { Attachment } from "@cairn/types";
 import { useMediaUpload } from "./useMediaUpload";
 
 interface Props {
+  projectId: string;
   featureId: string;
   onAttached: (a: Attachment) => void;
 }
 
-export function PhotoCapture({ featureId, onAttached }: Props): JSX.Element {
+export function PhotoCapture({ projectId, featureId, onAttached }: Props): JSX.Element {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const enqueue = useMediaUpload();
   const [busy, setBusy] = useState(false);
@@ -30,6 +31,7 @@ export function PhotoCapture({ featureId, onAttached }: Props): JSX.Element {
       });
       const dims = await readImageDimensions(compressed);
       const attachment = await enqueue({
+        projectId,
         featureId,
         kind: "photo",
         blob: compressed,

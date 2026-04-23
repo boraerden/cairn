@@ -3,13 +3,14 @@ import type { Attachment } from "@cairn/types";
 import { useMediaUpload } from "./useMediaUpload";
 
 interface Props {
+  projectId: string;
   featureId: string;
   onAttached: (a: Attachment) => void;
 }
 
 const MAX_VIDEO_SECONDS = 60;
 
-export function VideoCapture({ featureId, onAttached }: Props): JSX.Element {
+export function VideoCapture({ projectId, featureId, onAttached }: Props): JSX.Element {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const enqueue = useMediaUpload();
   const [busy, setBusy] = useState(false);
@@ -23,6 +24,7 @@ export function VideoCapture({ featureId, onAttached }: Props): JSX.Element {
         return;
       }
       const attachment = await enqueue({
+        projectId,
         featureId,
         kind: "video",
         blob: file,

@@ -12,7 +12,7 @@ export function LoginPage(): JSX.Element {
   const [busy, setBusy] = useState(false);
 
   if (user) {
-    navigate("/map", { replace: true });
+    navigate("/", { replace: true });
   }
 
   async function onSubmit(e: FormEvent) {
@@ -21,7 +21,7 @@ export function LoginPage(): JSX.Element {
     setError(null);
     try {
       await login(email, password);
-      navigate("/map", { replace: true });
+      navigate("/", { replace: true });
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
       else setError(String(err));

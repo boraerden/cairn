@@ -4,11 +4,12 @@ import { api } from "../api";
 import { getMediaBlob } from "../offline/db";
 
 interface Props {
+  projectId: string;
   attachment: Attachment;
   onRemove: () => void;
 }
 
-export function MediaView({ attachment, onRemove }: Props): JSX.Element {
+export function MediaView({ projectId, attachment, onRemove }: Props): JSX.Element {
   const [url, setUrl] = useState<string | null>(null);
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
 
@@ -31,7 +32,10 @@ export function MediaView({ attachment, onRemove }: Props): JSX.Element {
         return u;
       }
       try {
-        const res = await api<{ url: string }>("GET", `/media/${encodeURIComponent(key)}`);
+        const res = await api<{ url: string }>(
+          "GET",
+          `/projects/${encodeURIComponent(projectId)}/media/${encodeURIComponent(key)}`,
+        );
         return res.url;
       } catch {
         return null;
@@ -51,7 +55,7 @@ export function MediaView({ attachment, onRemove }: Props): JSX.Element {
       cancelled = true;
       revoke.forEach((u) => URL.revokeObjectURL(u));
     };
-  }, [attachment.key, attachment.thumbKey]);
+  }, [attachment.key, attachment.thumbKey, projectId]);
 
   return (
     <div className="attachment">

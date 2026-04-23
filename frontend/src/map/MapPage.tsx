@@ -1,22 +1,69 @@
-import { useCallback, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { v4 as uuid } from "uuid";
-import type { CairnFeature, CairnFeatureProperties } from "@cairn/types";
+import type { CairnFeature, CairnFeatureProperties, ProjectSummary } from "@cairn/types";
+import { api, ApiError } from "../api";
 import { useAuth } from "../auth/AuthProvider";
 import { FeatureEditor } from "../editor/FeatureEditor";
 import { useMapDoc } from "./useMapDoc";
 import { MapView } from "./MapView";
 import { useQueueStatus } from "../offline/useQueueStatus";
+import { rememberLastProject } from "../projects/ProjectsPage";
 
 type Mode = "select" | "point" | "line" | "polygon";
 
 export function MapPage(): JSX.Element {
   const { user, logout } = useAuth();
-  const { collection, status, upsertFeature, deleteFeature } = useMapDoc();
-  const queue = useQueueStatus();
+  const navigate = useNavigate();
+  const { projectId } = useParams<{ projectId: string }>();
+  const safeProjectId = projectId ?? "";
+  const { collection, status, error: mapError, upsertFeature, deleteFeature } = useMapDoc(safeProjectId);
+  const queue = useQueueStatus(safeProjectId);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("select");
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [project, setProject] = useState<ProjectSummary | null>(null);
+  const [pageError, setPageError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const opened = await api<ProjectSummary>("POST", `/projects/${encodeURIComponent(projectId)}/open`);
+        if (!cancelled) {
+          setProject(opened);
+          setPageError(null);
+          rememberLastProject(opened.id);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setPageError(err instanceof ApiError ? err.message : String(err));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    if (!collection.features.some((feature) => feature.properties.id === selectedId)) {
+      setSelectedId(null);
+      setSheetOpen(false);
+    }
+  }, [collection.features, selectedId]);
+
+  if (!projectId) return <Navigate to="/projects" replace />;
+  if (pageError) {
+    return (
+      <div className="admin-shell">
+        <div className="error">{pageError}</div>
+        <Link to="/projects">Back to projects</Link>
+      </div>
+    );
+  }
 
   const selectedFeature = useMemo(
     () => collection.features.find((f) => f.properties.id === selectedId) ?? null,
@@ -114,9 +161,11 @@ export function MapPage(): JSX.Element {
   return (
     <div className="map-shell">
       <div className="map-header">
-        <span className="title">Cairn</span>
+        <span className="title">{project?.name ?? "Cairn"}</span>
         <span style={{ color: "var(--muted)", fontSize: 12 }}>
-          {status} {queue.length > 0 ? `· ${queue.length} pending` : ""}
+          {status}
+          {mapError ? ` · ${mapError}` : ""}
+          {queue.length > 0 ? ` · ${queue.length} pending` : ""}
         </span>
         <div className="spacer" />
         <div className="row">
@@ -132,7 +181,10 @@ export function MapPage(): JSX.Element {
           <button onClick={() => setMode("polygon")} className={mode === "polygon" ? "primary" : ""}>
             Polygon
           </button>
-          <Link to="/regions">
+          <Link to="/projects">
+            <button type="button">Projects</button>
+          </Link>
+          <Link to={`/projects/${encodeURIComponent(projectId)}/regions`}>
             <button type="button">Regions</button>
           </Link>
           {user?.role === "admin" ? (
@@ -159,7 +211,12 @@ export function MapPage(): JSX.Element {
 
       <aside className="editor-panel">
         {selectedFeature ? (
-          <FeatureEditor feature={selectedFeature} onChange={handleUpdate} onDelete={handleDelete} />
+          <FeatureEditor
+            projectId={projectId}
+            feature={selectedFeature}
+            onChange={handleUpdate}
+            onDelete={handleDelete}
+          />
         ) : (
           <EmptyState />
         )}
@@ -179,7 +236,12 @@ export function MapPage(): JSX.Element {
         </button>
         <div className="sheet-content">
           {selectedFeature ? (
-            <FeatureEditor feature={selectedFeature} onChange={handleUpdate} onDelete={handleDelete} />
+            <FeatureEditor
+              projectId={projectId}
+              feature={selectedFeature}
+              onChange={handleUpdate}
+              onDelete={handleDelete}
+            />
           ) : (
             <EmptyState />
           )}

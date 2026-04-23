@@ -313,6 +313,36 @@ a {
   gap: 16px;
 }
 
+.project-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.project-card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+}
+
+.project-members {
+  display: grid;
+  gap: 8px;
+}
+
+.project-member-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
 .admin-shell table {
   width: 100%;
   border-collapse: collapse;

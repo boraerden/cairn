@@ -61,8 +61,8 @@ export function AdminPage(): JSX.Element {
       <div className="row">
         <h1 style={{ margin: 0 }}>Users</h1>
         <div style={{ flex: 1 }} />
-        <Link to="/map">
-          <button type="button">Back to map</button>
+        <Link to="/">
+          <button type="button">Back to projects</button>
         </Link>
       </div>
 

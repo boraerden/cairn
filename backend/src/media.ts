@@ -1,18 +1,10 @@
-import { ALLOWED_MIME, MEDIA_SIZE_LIMITS, type AttachmentKind } from "@cairn/types";
+import { ALLOWED_MIME, MEDIA_SIZE_LIMITS, type AttachmentKind, type PresignUploadRequest } from "@cairn/types";
 import { env, S3_KEYS } from "./env.js";
 import { presignGet, presignPut } from "./s3.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export interface PresignRequest {
-  featureId: string;
-  mediaId: string;
-  kind: AttachmentKind;
-  mimeType: string;
-  size: number;
-  /** Optional companion upload (photo thumbnail / video poster) as image/webp. */
-  withThumb?: boolean;
-}
+export interface PresignRequest extends PresignUploadRequest {}
 
 export interface PresignResponse {
   key: string;
@@ -40,6 +32,7 @@ function extForMime(mime: string): string {
 }
 
 export function validatePresignRequest(req: PresignRequest): void {
+  if (!UUID_RE.test(req.projectId)) throw new Error("projectId must be a uuid");
   if (!UUID_RE.test(req.featureId)) throw new Error("featureId must be a uuid");
   if (!UUID_RE.test(req.mediaId)) throw new Error("mediaId must be a uuid");
   if (!["photo", "audio", "video"].includes(req.kind)) throw new Error("invalid kind");
@@ -56,7 +49,7 @@ export function validatePresignRequest(req: PresignRequest): void {
 export async function presignUpload(req: PresignRequest): Promise<PresignResponse> {
   validatePresignRequest(req);
   const ext = extForMime(req.mimeType);
-  const key = `${S3_KEYS.mediaPrefix}${req.featureId}/${req.mediaId}.${ext}`;
+  const key = `${S3_KEYS.projectMediaPrefix(req.projectId)}${req.featureId}/${req.mediaId}.${ext}`;
   const ttl = env.PRESIGN_PUT_TTL_SECONDS;
   const uploadUrl = await presignPut(key, req.mimeType, ttl);
 
@@ -68,7 +61,7 @@ export async function presignUpload(req: PresignRequest): Promise<PresignRespons
   };
 
   if (req.withThumb && (req.kind === "photo" || req.kind === "video")) {
-    const thumbKey = `${S3_KEYS.mediaPrefix}${req.featureId}/${req.mediaId}.thumb.webp`;
+    const thumbKey = `${S3_KEYS.projectMediaPrefix(req.projectId)}${req.featureId}/${req.mediaId}.thumb.webp`;
     const thumbUploadUrl = await presignPut(thumbKey, "image/webp", ttl);
     base.thumbKey = thumbKey;
     base.thumbUploadUrl = thumbUploadUrl;
@@ -77,7 +70,7 @@ export async function presignUpload(req: PresignRequest): Promise<PresignRespons
   return base;
 }
 
-export async function presignRead(key: string): Promise<string> {
-  if (!key.startsWith(S3_KEYS.mediaPrefix)) throw new Error("key outside media/ prefix");
+export async function presignRead(projectId: string, key: string): Promise<string> {
+  if (!key.startsWith(S3_KEYS.projectMediaPrefix(projectId))) throw new Error("key outside project media prefix");
   return presignGet(key, env.PRESIGN_GET_TTL_SECONDS);
 }

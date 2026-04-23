@@ -51,6 +51,51 @@ export interface JwtClaims {
   exp: number;
 }
 
+export interface ProjectRecord {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  memberEmails: string[];
+  lastOpenedBy: Record<string, string>;
+}
+
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  memberEmails: string[];
+  lastOpenedAt: string | null;
+  canManageMembers: boolean;
+}
+
+export interface CreateProjectRequest {
+  name: string;
+}
+
+export interface ProjectMemberRequest {
+  email: string;
+}
+
+export interface PresignUploadRequest {
+  projectId: string;
+  featureId: string;
+  mediaId: string;
+  kind: AttachmentKind;
+  mimeType: string;
+  size: number;
+  withThumb?: boolean;
+}
+
+export interface ProjectEvent {
+  type: "project-changed";
+  projectId: string;
+  updatedAt: string;
+}
+
 export const MEDIA_SIZE_LIMITS: Record<AttachmentKind, number> = {
   photo: 10 * 1024 * 1024,
   audio: 20 * 1024 * 1024,

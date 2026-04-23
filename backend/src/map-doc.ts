@@ -7,8 +7,8 @@ export interface MapDoc {
   etag: string;
 }
 
-export async function readMapDoc(): Promise<MapDoc> {
-  const obj = await getObjectText(S3_KEYS.mapDoc);
+export async function readMapDoc(projectId: string): Promise<MapDoc> {
+  const obj = await getObjectText(S3_KEYS.projectMapDoc(projectId));
   if (!obj) {
     return { collection: emptyCollection(), etag: "" };
   }
@@ -17,10 +17,11 @@ export async function readMapDoc(): Promise<MapDoc> {
 }
 
 export async function writeMapDoc(
+  projectId: string,
   collection: CairnFeatureCollection,
   ifMatchEtag: string | null,
 ): Promise<{ etag: string; conflict: boolean; current?: MapDoc }> {
-  const current = await readMapDoc();
+  const current = await readMapDoc(projectId);
   if (ifMatchEtag !== null && current.etag && ifMatchEtag !== current.etag) {
     const merged = tryAutoMerge(current.collection, collection);
     if (!merged) {
@@ -30,7 +31,7 @@ export async function writeMapDoc(
   }
   const sanitized = sanitizeCollection(collection);
   const body = JSON.stringify(sanitized);
-  const { etag } = await putObjectText(S3_KEYS.mapDoc, body);
+  const { etag } = await putObjectText(S3_KEYS.projectMapDoc(projectId), body);
   return { etag, conflict: false };
 }
 

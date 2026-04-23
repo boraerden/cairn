@@ -55,6 +55,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }): JSX.E
     else localStorage.removeItem(USER_KEY);
   }, [user]);
 
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === TOKEN_KEY) setToken(readToken());
+      if (event.key === USER_KEY) setUser(readUser());
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
   const login = useCallback(async (email: string, password: string) => {
     const res = await api<LoginResponse>("POST", "/login", {
       body: { email, password },
