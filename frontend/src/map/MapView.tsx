@@ -22,7 +22,16 @@ export function MapView({ collection, onFeaturesChanged, onFeatureSelected, mode
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MlMap | null>(null);
   const drawRef = useRef<TerraDraw | null>(null);
-  const featuresVersionRef = useRef(0);
+  const onFeaturesChangedRef = useRef(onFeaturesChanged);
+  const onFeatureSelectedRef = useRef(onFeatureSelected);
+
+  useEffect(() => {
+    onFeaturesChangedRef.current = onFeaturesChanged;
+  }, [onFeaturesChanged]);
+
+  useEffect(() => {
+    onFeatureSelectedRef.current = onFeatureSelected;
+  }, [onFeatureSelected]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -59,13 +68,12 @@ export function MapView({ collection, onFeaturesChanged, onFeatureSelected, mode
       drawRef.current = draw;
 
       draw.on("change", () => {
-        featuresVersionRef.current += 1;
         const snapshot = draw.getSnapshot();
-        onFeaturesChanged(snapshot as GeoJSON.Feature[]);
+        onFeaturesChangedRef.current(snapshot as GeoJSON.Feature[]);
       });
 
-      draw.on("select", (id) => onFeatureSelected(String(id)));
-      draw.on("deselect", () => onFeatureSelected(null));
+      draw.on("select", (id) => onFeatureSelectedRef.current(String(id)));
+      draw.on("deselect", () => onFeatureSelectedRef.current(null));
 
       syncIntoDraw(draw, collection);
     });
