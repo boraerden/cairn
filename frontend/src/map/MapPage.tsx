@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { v4 as uuid } from "uuid";
 import type { CairnFeature, CairnFeatureProperties, ProjectSummary } from "@cairn/types";
@@ -22,6 +22,8 @@ export function MapPage(): JSX.Element {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("select");
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [deletedFeatureId, setDeletedFeatureId] = useState<string | null>(null);
+  const pendingDeletedIdsRef = useRef<Set<string>>(new Set());
   const [project, setProject] = useState<ProjectSummary | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
 
@@ -73,10 +75,15 @@ export function MapPage(): JSX.Element {
   const handleDrawChange = useCallback(
     (features: GeoJSON.Feature[]) => {
       const existingById = new Map(collection.features.map((f) => [f.properties.id, f]));
+      const nextIds = new Set<string>();
+      const seenIds = new Set<string>();
       let createdFeatureId: string | null = null;
       for (const raw of features) {
         const id = String(raw.id ?? "");
         if (!id) continue;
+        seenIds.add(id);
+        if (pendingDeletedIdsRef.current.has(id)) continue;
+        nextIds.add(id);
         const existing = existingById.get(id);
         const now = new Date().toISOString();
         const properties: CairnFeatureProperties = existing
@@ -101,12 +108,22 @@ export function MapPage(): JSX.Element {
           upsertFeature(next);
         }
       }
+      for (const existingId of existingById.keys()) {
+        if (!nextIds.has(existingId)) {
+          deleteFeature(existingId);
+        }
+      }
+      for (const pendingId of Array.from(pendingDeletedIdsRef.current)) {
+        if (!seenIds.has(pendingId)) {
+          pendingDeletedIdsRef.current.delete(pendingId);
+        }
+      }
       if (createdFeatureId) {
         setSelectedId(createdFeatureId);
         setSheetOpen(true);
       }
     },
-    [collection, upsertFeature, user],
+    [collection, deleteFeature, upsertFeature, user],
   );
 
   const handleSelected = useCallback((id: string | null) => {
@@ -126,6 +143,8 @@ export function MapPage(): JSX.Element {
 
   const handleDelete = useCallback(
     (id: string) => {
+      pendingDeletedIdsRef.current.add(id);
+      setDeletedFeatureId(id);
       deleteFeature(id);
       setSelectedId(null);
       setSheetOpen(false);
@@ -201,6 +220,7 @@ export function MapPage(): JSX.Element {
         onFeaturesChanged={handleDrawChange}
         onFeatureSelected={handleSelected}
         mode={mode}
+        deletedFeatureId={deletedFeatureId}
       />
 
       <div className="fab">

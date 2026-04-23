@@ -16,9 +16,10 @@ interface Props {
   onFeaturesChanged: (features: GeoJSON.Feature[]) => void;
   onFeatureSelected: (id: string | null) => void;
   mode: "select" | "point" | "line" | "polygon";
+  deletedFeatureId?: string | null;
 }
 
-export function MapView({ collection, onFeaturesChanged, onFeatureSelected, mode }: Props): JSX.Element {
+export function MapView({ collection, onFeaturesChanged, onFeatureSelected, mode, deletedFeatureId = null }: Props): JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MlMap | null>(null);
   const drawRef = useRef<TerraDraw | null>(null);
@@ -104,6 +105,15 @@ export function MapView({ collection, onFeaturesChanged, onFeatureSelected, mode
     const map = { select: "select", point: "point", line: "linestring", polygon: "polygon" } as const;
     draw.setMode(map[mode]);
   }, [mode]);
+
+  useEffect(() => {
+    const draw = drawRef.current;
+    if (!draw || !deletedFeatureId) return;
+    const exists = draw.getSnapshot().some((feature: GeoJSON.Feature) => String(feature.id) === deletedFeatureId);
+    if (exists) {
+      draw.removeFeatures([deletedFeatureId]);
+    }
+  }, [deletedFeatureId]);
 
   return (
     <div className="map-canvas">
